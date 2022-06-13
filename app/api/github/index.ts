@@ -1,20 +1,19 @@
 import { Request, Response, Router } from 'express';
 import axios from 'axios';
-
-import { env } from '../../config/environments';
+import { Env } from '../../util/env';
 
 const github: Router = Router();
 
 github.get('/', async (req: Request, res: Response) => {
 
-  if ( !env.github.username || !env.github.access_key ) {
-    return res.status(400).send({ error: 'something went wrong.' });
+  if ( !Env.get('GH_ACCESS_USERNAME') || !Env.get('GH_ACCESS_TOKEN') ) {
+    return res.status(400).send({ error: 'something went wrong' });
   }
 
   const userData = await axios.get('https://api.github.com/user', {
     auth: {
-      username: env.github.username,
-      password: env.github.access_key,
+      username: Env.get('GH_ACCESS_USERNAME')!,
+      password: Env.get('GH_ACCESS_TOKEN')!,
     }
   });
 

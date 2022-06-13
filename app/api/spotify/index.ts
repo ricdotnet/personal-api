@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
 import axios from 'axios';
-import { env } from '../../config/environments';
+import { Env } from '../../util/env';
 
 const spotify: Router = Router();
 
@@ -39,10 +39,10 @@ async function getCurrentlyPlaying() {
 
 async function refreshAccessToken() {
   return await axios.post('https://accounts.spotify.com/api/token',
-    `grant_type=refresh_token&refresh_token=${env.spotify.refresh_token}`, {
+    `grant_type=refresh_token&refresh_token=${Env.get('SPOTIFY_REFRESH_TOKEN')}`, {
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
-        Authorization: 'Basic ' + Buffer.from(env.spotify.client_id + ':' + env.spotify.client_secret).toString('base64'),
+        Authorization: 'Basic ' + Buffer.from(Env.get('SPOTIFY_CLIENT_ID') + ':' + Env.get('SPOTIFY_CLIENT_SECRET')).toString('base64'),
       }
     });
 }
