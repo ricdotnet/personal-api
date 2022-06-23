@@ -1,30 +1,39 @@
 import { Request, Response, Router } from 'express';
 import axios from 'axios';
 import { Env } from '../../util/env';
+import WebSocket from 'ws';
+
+import { getWebsocketServer } from '../../websocket';
 
 const spotify: Router = Router();
 
 let accessToken: any = 'dummy_token'; // don't leave empty. I do not want to deal with multiple errors...
+let dealerSpotify: any = null;
+let connection_id: any = null;
 
 // TODO: refactor this into some separated services for that ugly logic
 spotify.get('/', async (req: Request, res: Response) => {
-
   let currentlyPlaying;
 
   try {
     currentlyPlaying = await getCurrentlyPlaying();
   } catch (e: any) {
     // when some user visits and if the request gets a 401 we then runs a request to get a refreshed token to request the song again
-    if ( e.response.data.error.status === 401 ) {
+    if (e.response.data.error.status === 401) {
       const refreshedToken = await refreshAccessToken();
       accessToken = refreshedToken.data.access_token;
-
+      
       currentlyPlaying = await getCurrentlyPlaying();
+      await requestSpotifyTokenFromDiscord();
+      connectToSpotifyDealer();
       return res.send(currentlyPlaying.data);
     }
     return res.status(400).send({ error: 'something went wrong.' });
   }
 
+  // connectToSpotifyDealer();
+  await requestSpotifyTokenFromDiscord();
+  connectToSpotifyDealer();
   res.send(currentlyPlaying.data);
 });
 
@@ -33,18 +42,80 @@ async function getCurrentlyPlaying() {
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${accessToken}`,
-    }
+    },
   });
 }
 
 async function refreshAccessToken() {
-  return await axios.post('https://accounts.spotify.com/api/token',
-    `grant_type=refresh_token&refresh_token=${Env.get('SPOTIFY_REFRESH_TOKEN')}`, {
+  return await axios.post(
+    'https://accounts.spotify.com/api/token',
+    `grant_type=refresh_token&refresh_token=${Env.get('SPOTIFY_REFRESH_TOKEN')}`,
+    {
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
-        Authorization: 'Basic ' + Buffer.from(Env.get('SPOTIFY_CLIENT_ID') + ':' + Env.get('SPOTIFY_CLIENT_SECRET')).toString('base64'),
-      }
+        Authorization:
+          'Basic ' +
+          Buffer.from(Env.get('SPOTIFY_CLIENT_ID') + ':' + Env.get('SPOTIFY_CLIENT_SECRET')).toString('base64'),
+      },
+    }
+  );
+}
+
+function connectToSpotifyDealer() {
+  const ws = new WebSocket(`wss://dealer.spotify.com/?access_token=${dealerSpotify}`);
+  ws.onmessage = (e: any) => {
+    const data = JSON.parse(e.data);
+    if (data.headers && data.headers['Spotify-Connection-Id']) {
+      connection_id = data.headers['Spotify-Connection-Id'];
+    }
+
+    console.log(data);
+    getWebsocketServer().clients.forEach((c: WebSocket) => {
+      c.send(JSON.stringify(data));
     });
+  };
+  // setInterval(() => {
+  //   ws.send(JSON.stringify({ type: 'ping' }));
+  // }, 5000);
+
+  subscribeToEvents();
+}
+
+function subscribeToEvents() {
+  if (connection_id && dealerSpotify) {
+    axios
+      .put(
+        `https://api.spotify.com/v1/me/notifications/player?connection_id=${connection_id}`,
+        {},
+        {
+          headers: {
+            accept: 'application/json',
+            authorization: `Bearer ${dealerSpotify}`,
+          },
+        }
+      )
+      .then((r: any) => {
+        console.log(r.data);
+      })
+      .catch((error) => {
+        console.error(error.response);
+      });
+  } else {
+    setTimeout(() => {
+      subscribeToEvents();
+    }, 3000);
+  }
+}
+
+async function requestSpotifyTokenFromDiscord() {
+  // https://discord.com/api/v9/users/@me/connections/spotify/rrocha93/access-token
+  const response = await axios.get('https://discord.com/api/v9/users/@me/connections/spotify/rrocha93/access-token', {
+    headers: {
+      authorization: Env.get('DISCORD_TOKEN') || '',
+    }
+  });
+
+  dealerSpotify = response.data.access_token;
 }
 
 export { spotify };
