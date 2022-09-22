@@ -1,9 +1,9 @@
 import { Request, Response, Router } from 'express';
-import axios from 'axios';
 import { Env } from '../../util/env';
+import axios from 'axios';
 import WebSocket from 'ws';
 
-import { getWebsocketServer } from '../../websocket';
+import { connections } from '../../websocket';
 
 const spotify: Router = Router();
 
@@ -22,7 +22,7 @@ spotify.get('/', async (req: Request, res: Response) => {
     if (e.response.data.error.status === 401) {
       const refreshedToken = await refreshAccessToken();
       accessToken = refreshedToken.data.access_token;
-      
+
       currentlyPlaying = await getCurrentlyPlaying();
       await requestSpotifyTokenFromDiscord();
       connectToSpotifyDealer();
@@ -69,14 +69,10 @@ function connectToSpotifyDealer() {
       connection_id = data.headers['Spotify-Connection-Id'];
     }
 
-    console.log(data);
-    getWebsocketServer().clients.forEach((c: WebSocket) => {
-      c.send(JSON.stringify(data));
+    connections.forEach((connection: WebSocket) => {
+      connection.send(JSON.stringify(data));
     });
   };
-  // setInterval(() => {
-  //   ws.send(JSON.stringify({ type: 'ping' }));
-  // }, 5000);
 
   subscribeToEvents();
 }
@@ -109,11 +105,17 @@ function subscribeToEvents() {
 
 async function requestSpotifyTokenFromDiscord() {
   // https://discord.com/api/v9/users/@me/connections/spotify/rrocha93/access-token
-  const response = await axios.get('https://discord.com/api/v9/users/@me/connections/spotify/rrocha93/access-token', {
+  let response;
+
+  try {
+    response = await axios.get('https://discord.com/api/v9/users/@me/connections/spotify/rrocha93/access-token', {
     headers: {
       authorization: Env.get('DISCORD_TOKEN') || '',
     }
   });
+  } catch (e) {
+    throw new Error('something went wrong');
+  }
 
   dealerSpotify = response.data.access_token;
 }

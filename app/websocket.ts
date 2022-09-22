@@ -1,7 +1,8 @@
-import { IncomingMessage } from "http";
-import * as WebSocket from "ws";
+import { IncomingMessage } from 'http';
+import * as WebSocket from 'ws';
 
 let websocketServer: WebSocket.Server;
+let connections: any[] = [];
 
 function initWebsocketServer(server: any) {
   websocketServer = new WebSocket.Server({ server });
@@ -14,7 +15,10 @@ function getWebsocketServer(): WebSocket.Server {
 }
 
 function onConnect(connection: WebSocket, request: IncomingMessage) {
-  connection.on('message', (rawData: WebSocket.RawData) => onMessage(connection, rawData, request));
+  connections.push(connection);
+  connection.on('message', (rawData: WebSocket.RawData) => {
+    onMessage(connection, rawData, request);
+  });
 }
 
 function onMessage(connection: WebSocket, rawData: WebSocket.RawData, request: IncomingMessage) {
@@ -27,4 +31,5 @@ export {
   getWebsocketServer,
   onConnect,
   onMessage,
-}
+  connections,
+};
